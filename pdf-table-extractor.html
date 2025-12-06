@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Table Extractor – ExtractSuite</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- PDF.js for PDF text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #0071e3 0%, #40c8e0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .frosted-nav {
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            background-color: rgba(255, 255, 255, 0.72);
+        }
+        
+        .upload-area {
+            border: 2px dashed #d1d1d6;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area.dragover {
+            border-color: #0071e3;
+            background-color: rgba(0, 113, 227, 0.05);
+        }
+        
+        .spinner {
+            border: 3px solid #f5f5f7;
+            border-top: 3px solid #0071e3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.4s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .user-dropdown {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+        }
+        
+        .user-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .toast {
+            animation: toastSlideIn 0.3s ease, toastSlideOut 0.3s ease 2.7s forwards;
+        }
+        
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes toastSlideOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(20px); }
+        }
+        
+        .mode-toggle {
+            position: relative;
+            background: #f5f5f7;
+            border-radius: 12px;
+            padding: 4px;
+        }
+        
+        .mode-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .mode-btn.active {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .ai-badge {
+            background: linear-gradient(135deg, #5856d6, #af52de);
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+        }
+        
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+        
+        .modal-content {
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .credit-card {
+            background: linear-gradient(135deg, #1d1d1f 0%, #3d3d3f 100%);
+            border-radius: 16px;
+            padding: 24px;
+            color: white;
+        }
+        
+        .credit-option {
+            border: 2px solid #e5e5e7;
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .credit-option:hover {
+            border-color: #0071e3;
+        }
+        
+        .credit-option.selected {
+            border-color: #0071e3;
+            background: rgba(0, 113, 227, 0.05);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        .extracted-table {
+            min-width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .extracted-table th,
+        .extracted-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e5e5e7;
+        }
+        
+        .extracted-table th {
+            background-color: #f5f5f7;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #86868b;
+        }
+        
+        .extracted-table tr:hover {
+            background-color: #f5f5f7;
+        }
+        
+        .table-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        
+        .table-tab {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid #e5e5e7;
+            background: white;
+        }
+        
+        .table-tab.active {
+            background: #0071e3;
+            color: white;
+            border-color: #0071e3;
+        }
+        
+        .table-tab:hover:not(.active) {
+            border-color: #0071e3;
+            color: #0071e3;
+        }
+    </style>
+</head>
+<body class="bg-[#f5f5f7] text-[#1d1d1f]">
+    
+    <!-- Navigation -->
+    <nav class="frosted-nav fixed top-0 left-0 right-0 z-50 border-b border-gray-200/50">
+        <div class="max-w-[980px] mx-auto px-6 h-14 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-2">
+                <svg class="w-8 h-8" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="url(#logo-gradient)"/>
+                    <path d="M9 12h14M9 16h10M9 20h14" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <defs>
+                        <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
+                            <stop stop-color="#0071e3"/>
+                            <stop offset="1" stop-color="#40c8e0"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span class="text-xl font-semibold" style="background: linear-gradient(135deg, #0071e3 0%, #40c8e0 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ExtractSuite</span>
+            </a>
+            
+            <div class="hidden md:flex items-center gap-8">
+                <a href="index.html#tools" class="text-sm text-[#1d1d1f] hover:text-[#0071e3] transition-colors">Tools</a>
+                <a href="index.html#how-it-works" class="text-sm text-[#1d1d1f] hover:text-[#0071e3] transition-colors">How It Works</a>
+                <a href="index.html#pricing" class="text-sm text-[#1d1d1f] hover:text-[#0071e3] transition-colors">Pricing</a>
+            </div>
+            
+            <div class="hidden md:flex items-center gap-3" id="auth-buttons">
+                <div id="logged-out-buttons" class="flex items-center gap-3">
+                    <button onclick="window.location.href='index.html#pricing'" class="text-sm text-[#1d1d1f] hover:text-[#0071e3] transition-colors font-medium">
+                        Sign In
+                    </button>
+                    <button onclick="window.location.href='index.html#pricing'" class="bg-[#0071e3] text-white text-sm font-medium px-5 py-2 rounded-full hover:bg-[#0077ED] transition-colors">
+                        Get Started
+                    </button>
+                </div>
+                
+                <div id="logged-in-buttons" class="hidden relative">
+                    <button onclick="toggleUserDropdown()" class="flex items-center gap-2 text-sm font-medium hover:text-[#0071e3] transition-colors">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#0071e3] to-[#40c8e0] flex items-center justify-center text-white text-xs font-semibold" id="user-avatar">
+                            U
+                        </div>
+                        <span id="user-name" class="hidden sm:inline">User</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    
+                    <div id="user-dropdown" class="user-dropdown absolute right-0 top-12 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                        <div class="p-4 border-b border-gray-100">
+                            <p class="font-semibold text-sm" id="dropdown-name">User</p>
+                            <p class="text-xs text-[#86868b]" id="dropdown-email">user@email.com</p>
+                        </div>
+                        <div class="p-2">
+                            <div class="px-3 py-2 rounded-lg bg-[#f5f5f7] mb-2">
+                                <p class="text-xs text-[#86868b]">Monthly Usage</p>
+                                <div class="flex items-center justify-between mt-1">
+                                    <span class="text-sm font-semibold" id="usage-count">0 / 10</span>
+                                    <span class="text-xs px-2 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0071e3] font-medium" id="user-plan">Free</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-gray-200 rounded-full mt-2">
+                                    <div class="h-full bg-[#0071e3] rounded-full transition-all" id="usage-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="px-3 py-2 rounded-lg bg-gradient-to-r from-[#5856d6]/10 to-[#af52de]/10 mb-2">
+                                <p class="text-xs text-[#5856d6]">AI Credits</p>
+                                <div class="flex items-center justify-between mt-1">
+                                    <span class="text-sm font-semibold" id="ai-credits">0</span>
+                                    <button onclick="openCreditsModal()" class="text-xs px-2 py-0.5 rounded-full bg-[#5856d6] text-white font-medium hover:bg-[#4745c5] transition-colors">
+                                        Buy More
+                                    </button>
+                                </div>
+                            </div>
+                            <a href="index.html#pricing" class="flex items-center gap-3 px-3 py-2 text-sm text-[#1d1d1f] hover:bg-[#f5f5f7] rounded-lg transition-colors">
+                                <svg class="w-5 h-5 text-[#86868b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                                </svg>
+                                Upgrade Plan
+                            </a>
+                            <button onclick="signOut()" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#ff3b30] hover:bg-[#f5f5f7] rounded-lg transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                </svg>
+                                Sign Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Hero Section -->
+    <section class="pt-24 pb-12 px-6 bg-white">
+        <div class="max-w-[980px] mx-auto text-center">
+            <div class="inline-flex items-center gap-2 px-4 py-2 bg-[#0071e3]/10 rounded-full mb-6">
+                <svg class="w-5 h-5 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                <span class="text-sm font-semibold text-[#0071e3]">PDF Table Extractor</span>
+            </div>
+            
+            <h1 class="text-5xl md:text-6xl font-semibold mb-6">
+                Extract PDF tables.<br>
+                <span class="gradient-text">Perfectly formatted.</span>
+            </h1>
+            
+            <p class="text-xl text-[#6e6e73] max-w-2xl mx-auto mb-8">
+                Turn any PDF table into clean CSV or Excel files. Handles merged cells, scanned documents, and complex layouts.
+            </p>
+        </div>
+    </section>
+    
+    <!-- Upload Section -->
+    <section class="py-12 px-6">
+        <div class="max-w-[980px] mx-auto">
+            
+            <!-- Upload Area -->
+            <div id="upload-section" class="bg-white rounded-3xl p-8 md:p-12 shadow-lg">
+                
+                <!-- Extraction Mode Toggle -->
+                <div class="flex justify-center mb-8">
+                    <div class="mode-toggle flex">
+                        <button id="mode-standard" onclick="setExtractionMode('standard')" class="mode-btn active">
+                            Standard
+                        </button>
+                        <button id="mode-ai" onclick="setExtractionMode('ai')" class="mode-btn flex items-center">
+                            AI-Powered
+                            <span class="ai-badge">PRO</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Mode Description -->
+                <div class="text-center mb-6">
+                    <p id="mode-description" class="text-sm text-[#6e6e73]">
+                        Standard extraction detects tables using text positioning. Works best with simple, well-formatted tables.
+                    </p>
+                </div>
+                
+                <div id="upload-area" class="upload-area rounded-2xl p-12 text-center cursor-pointer">
+                    <input type="file" id="file-input" accept=".pdf" class="hidden">
+                    
+                    <svg class="w-16 h-16 mx-auto text-[#0071e3] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    
+                    <h3 class="text-2xl font-semibold mb-2">Drop your PDF here</h3>
+                    <p class="text-[#6e6e73] mb-4">or click to browse files</p>
+                    <p class="text-sm text-[#86868b]">PDF only • Max 50MB</p>
+                </div>
+                
+                <!-- Selected File Info -->
+                <div id="file-info" class="hidden mt-6 p-4 bg-[#f5f5f7] rounded-xl flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-10 h-10 text-[#ff3b30]" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/>
+                            <path d="M14 2v6h6M10 17h4M10 13h4M10 9h1" stroke="white" stroke-width="1"/>
+                        </svg>
+                        <div>
+                            <p class="font-semibold text-sm" id="file-name">document.pdf</p>
+                            <p class="text-xs text-[#86868b]" id="file-size">3.2 MB</p>
+                        </div>
+                    </div>
+                    <button onclick="clearFile()" class="text-[#ff3b30] text-sm font-medium hover:underline">Remove</button>
+                </div>
+                
+                <!-- Extract Button -->
+                <button id="extract-btn" onclick="extractTable()" class="hidden w-full mt-6 py-4 bg-[#0071e3] text-white font-semibold rounded-full hover:bg-[#0077ED] transition-colors text-lg">
+                    Extract Table Data
+                </button>
+            </div>
+            
+            <!-- Processing State -->
+            <div id="processing-section" class="hidden bg-white rounded-3xl p-12 shadow-lg text-center">
+                <div class="spinner mx-auto mb-6"></div>
+                <h3 class="text-2xl font-semibold mb-2">Extracting table data...</h3>
+                <p class="text-[#6e6e73] mb-4" id="processing-status">Analyzing document structure</p>
+                <div class="max-w-xs mx-auto">
+                    <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="h-full bg-[#0071e3] rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Results Section -->
+            <div id="results-section" class="hidden bg-white rounded-3xl p-8 md:p-12 shadow-lg fade-in">
+                <div class="flex items-center justify-between mb-8">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-10 h-10 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <div>
+                            <h3 class="text-2xl font-semibold">Extraction Complete!</h3>
+                            <p class="text-sm text-[#6e6e73]" id="results-summary">Found 1 table</p>
+                        </div>
+                    </div>
+                    <button onclick="resetExtractor()" class="text-sm text-[#0071e3] font-medium hover:underline">
+                        Extract Another
+                    </button>
+                </div>
+                
+                <!-- Table Selector -->
+                <div id="table-selector" class="table-selector hidden">
+                    <!-- Will be populated dynamically -->
+                </div>
+                
+                <!-- Table Preview -->
+                <div class="bg-[#f5f5f7] rounded-2xl p-6 mb-8">
+                    <h4 class="font-semibold mb-4">Table Preview</h4>
+                    <div class="table-container bg-white rounded-xl overflow-hidden">
+                        <table class="extracted-table" id="extracted-table">
+                            <!-- Will be populated dynamically -->
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <div class="bg-[#f5f5f7] rounded-xl p-4 text-center">
+                        <p class="text-xs text-[#86868b] mb-1">Rows Extracted</p>
+                        <p class="text-2xl font-semibold text-[#0071e3]" id="stat-rows">0</p>
+                    </div>
+                    <div class="bg-[#f5f5f7] rounded-xl p-4 text-center">
+                        <p class="text-xs text-[#86868b] mb-1">Columns</p>
+                        <p class="text-2xl font-semibold text-[#0071e3]" id="stat-cols">0</p>
+                    </div>
+                    <div class="bg-[#f5f5f7] rounded-xl p-4 text-center">
+                        <p class="text-xs text-[#86868b] mb-1">Extraction Mode</p>
+                        <p class="text-sm font-semibold text-[#34c759]" id="stat-mode">Standard</p>
+                    </div>
+                </div>
+                
+                <!-- Export Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button onclick="downloadCSV()" class="flex-1 py-3 px-6 bg-[#0071e3] text-white font-semibold rounded-full hover:bg-[#0077ED] transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Download CSV
+                    </button>
+                    <button onclick="downloadExcel()" class="flex-1 py-3 px-6 bg-[#34c759] text-white font-semibold rounded-full hover:bg-[#30d158] transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Download Excel
+                    </button>
+                    <button onclick="downloadJSON()" class="flex-1 py-3 px-6 border-2 border-[#0071e3] text-[#0071e3] font-semibold rounded-full hover:bg-[#0071e3] hover:text-white transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Download JSON
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Error Section -->
+            <div id="error-section" class="hidden bg-white rounded-3xl p-12 shadow-lg text-center fade-in">
+                <svg class="w-16 h-16 mx-auto text-[#ff3b30] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <h3 class="text-2xl font-semibold mb-2">Extraction Failed</h3>
+                <p class="text-[#6e6e73] mb-6" id="error-message">Something went wrong. Please try again.</p>
+                <button onclick="resetExtractor()" class="bg-[#0071e3] text-white font-medium px-6 py-3 rounded-full hover:bg-[#0077ED] transition-colors">
+                    Try Again
+                </button>
+            </div>
+            
+        </div>
+    </section>
+    
+    <!-- Buy Credits Modal -->
+    <div id="credits-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="modal-overlay absolute inset-0" onclick="closeCreditsModal()"></div>
+        <div class="modal-content relative bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8">
+            <button onclick="closeCreditsModal()" class="absolute top-4 right-4 p-2 hover:bg-[#f5f5f7] rounded-full transition-colors">
+                <svg class="w-5 h-5 text-[#86868b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+            
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#5856d6] to-[#af52de] flex items-center justify-center">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-semibold">Buy AI Credits</h2>
+                <p class="text-sm text-[#6e6e73] mt-1">Power up your extractions with AI</p>
+            </div>
+            
+            <!-- Current Credits -->
+            <div class="credit-card mb-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">Current Balance</p>
+                        <p class="text-3xl font-bold" id="modal-credits">0</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-400">AI Credits</p>
+                        <p class="text-xs text-gray-500">1 credit = 1 AI extraction</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Credit Options -->
+            <div class="space-y-3 mb-6">
+                <div class="credit-option selected" onclick="selectCreditOption(this, 10, 5)">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold">10 Credits</p>
+                            <p class="text-sm text-[#6e6e73]">$0.50 per credit</p>
+                        </div>
+                        <p class="text-xl font-bold">$5</p>
+                    </div>
+                </div>
+                <div class="credit-option" onclick="selectCreditOption(this, 50, 20)">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold">50 Credits</p>
+                            <p class="text-sm text-[#6e6e73]">$0.40 per credit</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xl font-bold">$20</p>
+                            <p class="text-xs text-[#34c759] font-medium">Save 20%</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="credit-option" onclick="selectCreditOption(this, 100, 35)">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold">100 Credits</p>
+                            <p class="text-sm text-[#6e6e73]">$0.35 per credit</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xl font-bold">$35</p>
+                            <p class="text-xs text-[#34c759] font-medium">Save 30%</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <button onclick="purchaseCredits()" class="w-full py-3 px-6 bg-gradient-to-r from-[#5856d6] to-[#af52de] text-white font-semibold rounded-full hover:opacity-90 transition-opacity">
+                Purchase Credits
+            </button>
+            
+            <p class="text-xs text-[#86868b] text-center mt-4">
+                Secure payment powered by Stripe
+            </p>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"></div>
+    
+    <script>
+        // Set PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        // Groq API Configuration (for AI mode)
+        const GROQ_API_KEY = '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';
+        const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+        const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+        
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCynWQ_JKc07eab18k9qQeXp7azvCdv0WI",
+            authDomain: "extract-suite.firebaseapp.com",
+            projectId: "extract-suite",
+            storageBucket: "extract-suite.firebasestorage.app",
+            messagingSenderId: "511007996472",
+            appId: "1:511007996472:web:0eaf56996f281d2be504cd",
+            measurementId: "G-JV61MMF18H"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        let currentUser = null;
+        let selectedFile = null;
+        let extractedTables = [];
+        let currentTableIndex = 0;
+        let extractionMode = 'standard';
+        let selectedCredits = { amount: 10, price: 5 };
+        
+        // Auth State Observer
+        auth.onAuthStateChanged((user) => {
+            currentUser = user;
+            updateUIForUser(user);
+        });
+        
+        function updateUIForUser(user) {
+            const loggedOutButtons = document.getElementById('logged-out-buttons');
+            const loggedInButtons = document.getElementById('logged-in-buttons');
+            const userAvatar = document.getElementById('user-avatar');
+            const userName = document.getElementById('user-name');
+            
+            if (user) {
+                loggedOutButtons.classList.add('hidden');
+                loggedInButtons.classList.remove('hidden');
+                
+                const displayName = user.displayName || user.email;
+                userAvatar.textContent = displayName.charAt(0).toUpperCase();
+                userName.textContent = displayName.split(' ')[0];
+                
+                loadUserDataForDropdown(user.uid);
+            } else {
+                loggedOutButtons.classList.remove('hidden');
+                loggedInButtons.classList.add('hidden');
+            }
+        }
+        
+        async function loadUserDataForDropdown(userId) {
+            const userDoc = await db.collection('users').doc(userId).get();
+            
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                document.getElementById('dropdown-name').textContent = userData.displayName;
+                document.getElementById('dropdown-email').textContent = userData.email;
+                document.getElementById('usage-count').textContent = `${userData.usageCount} / ${userData.usageLimit}`;
+                document.getElementById('user-plan').textContent = userData.plan.charAt(0).toUpperCase() + userData.plan.slice(1);
+                document.getElementById('ai-credits').textContent = userData.aiCredits || 0;
+                document.getElementById('modal-credits').textContent = userData.aiCredits || 0;
+                
+                const usagePercent = Math.min((userData.usageCount / userData.usageLimit) * 100, 100);
+                document.getElementById('usage-bar').style.width = usagePercent + '%';
+                
+                if (usagePercent >= 90) {
+                    document.getElementById('usage-bar').classList.add('bg-[#ff3b30]');
+                    document.getElementById('usage-bar').classList.remove('bg-[#0071e3]');
+                }
+            }
+        }
+        
+        function toggleUserDropdown(show = null) {
+            const dropdown = document.getElementById('user-dropdown');
+            if (show === false) dropdown.classList.remove('show');
+            else if (show === true) dropdown.classList.add('show');
+            else dropdown.classList.toggle('show');
+        }
+        
+        async function signOut() {
+            try {
+                await auth.signOut();
+                showToast('Signed out successfully', 'success');
+                toggleUserDropdown(false);
+                window.location.href = 'index.html';
+            } catch (error) {
+                showToast('Error signing out', 'error');
+            }
+        }
+        
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('user-dropdown');
+            const loggedInButtons = document.getElementById('logged-in-buttons');
+            if (!loggedInButtons.contains(e.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+        
+        // Extraction Mode Toggle
+        function setExtractionMode(mode) {
+            extractionMode = mode;
+            document.getElementById('mode-standard').classList.toggle('active', mode === 'standard');
+            document.getElementById('mode-ai').classList.toggle('active', mode === 'ai');
+            
+            const description = document.getElementById('mode-description');
+            if (mode === 'standard') {
+                description.textContent = 'Standard extraction detects tables using text positioning. Works best with simple, well-formatted tables.';
+            } else {
+                description.textContent = 'AI-powered extraction uses advanced AI for complex tables and scanned documents. Uses 1 AI credit per extraction.';
+            }
+        }
+        
+        // Credits Modal
+        function openCreditsModal() {
+            document.getElementById('credits-modal').classList.remove('hidden');
+            document.getElementById('credits-modal').classList.add('flex');
+        }
+        
+        function closeCreditsModal() {
+            document.getElementById('credits-modal').classList.add('hidden');
+            document.getElementById('credits-modal').classList.remove('flex');
+        }
+        
+        function selectCreditOption(element, amount, price) {
+            document.querySelectorAll('.credit-option').forEach(opt => opt.classList.remove('selected'));
+            element.classList.add('selected');
+            selectedCredits = { amount, price };
+        }
+        
+        async function purchaseCredits() {
+            if (!currentUser) {
+                showToast('Please sign in first', 'error');
+                return;
+            }
+            
+            showToast(`Redirecting to payment for ${selectedCredits.amount} credits ($${selectedCredits.price})...`, 'success');
+            
+            setTimeout(async () => {
+                const userRef = db.collection('users').doc(currentUser.uid);
+                await userRef.update({
+                    aiCredits: firebase.firestore.FieldValue.increment(selectedCredits.amount)
+                });
+                await loadUserDataForDropdown(currentUser.uid);
+                closeCreditsModal();
+                showToast(`${selectedCredits.amount} AI credits added!`, 'success');
+            }, 1500);
+        }
+        
+        // File Upload Handling
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFileSelect(files[0]);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
+        });
+        
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                showToast('Please upload a PDF file', 'error');
+                return;
+            }
+            
+            if (file.size > 50 * 1024 * 1024) {
+                showToast('File size must be less than 50MB', 'error');
+                return;
+            }
+            
+            selectedFile = file;
+            document.getElementById('file-name').textContent = file.name;
+            document.getElementById('file-size').textContent = formatFileSize(file.size);
+            document.getElementById('file-info').classList.remove('hidden');
+            document.getElementById('extract-btn').classList.remove('hidden');
+        }
+        
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            document.getElementById('file-info').classList.add('hidden');
+            document.getElementById('extract-btn').classList.add('hidden');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        function updateProgress(percent, status) {
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('processing-status').textContent = status;
+        }
+        
+        // Main Extraction Function
+        async function extractTable() {
+            if (!currentUser) {
+                showToast('Please sign in to extract tables', 'error');
+                setTimeout(() => window.location.href = 'index.html#pricing', 2000);
+                return;
+            }
+            
+            const userDoc = await db.collection('users').doc(currentUser.uid).get();
+            const userData = userDoc.data();
+            
+            if (extractionMode === 'ai') {
+                const aiCredits = userData.aiCredits || 0;
+                if (aiCredits < 1) {
+                    showToast('No AI credits remaining. Purchase more or use standard mode.', 'error');
+                    openCreditsModal();
+                    return;
+                }
+            } else {
+                if (userData.plan === 'free' && userData.usageCount >= userData.usageLimit) {
+                    showToast('You\'ve reached your free tier limit. Please upgrade.', 'error');
+                    setTimeout(() => window.location.href = 'index.html#pricing', 2000);
+                    return;
+                }
+            }
+            
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('processing-section').classList.remove('hidden');
+            
+            try {
+                updateProgress(10, 'Reading PDF content...');
+                
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                
+                // Extract text with positions for table detection
+                let allItems = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    textContent.items.forEach(item => {
+                        if (item.str.trim()) {
+                            allItems.push({
+                                text: item.str,
+                                x: Math.round(item.transform[4]),
+                                y: Math.round(item.transform[5]),
+                                width: item.width,
+                                height: item.height
+                            });
+                        }
+                    });
+                }
+                
+                updateProgress(40, extractionMode === 'ai' ? 'Analyzing with AI...' : 'Detecting table structure...');
+                
+                if (extractionMode === 'ai') {
+                    const fullText = allItems.map(item => item.text).join(' ');
+                    extractedTables = await extractWithAI(fullText);
+                    await db.collection('users').doc(currentUser.uid).update({
+                        aiCredits: firebase.firestore.FieldValue.increment(-1)
+                    });
+                } else {
+                    extractedTables = extractTablesFromPositions(allItems);
+                    await incrementUsage(currentUser.uid);
+                }
+                
+                if (extractedTables.length === 0) {
+                    throw new Error('No tables found in the document. Try AI-powered mode for complex layouts.');
+                }
+                
+                updateProgress(90, 'Formatting results...');
+                
+                await loadUserDataForDropdown(currentUser.uid);
+                
+                updateProgress(100, 'Complete!');
+                
+                setTimeout(() => {
+                    displayResults();
+                    document.getElementById('processing-section').classList.add('hidden');
+                    document.getElementById('results-section').classList.remove('hidden');
+                    showToast('Tables extracted successfully!', 'success');
+                }, 500);
+                
+            } catch (error) {
+                console.error('Extraction error:', error);
+                document.getElementById('processing-section').classList.add('hidden');
+                document.getElementById('error-section').classList.remove('hidden');
+                document.getElementById('error-message').textContent = error.message || 'Failed to extract table data.';
+                showToast('Extraction failed', 'error');
+            }
+        }
+        
+        // Standard Position-based Table Extraction
+        function extractTablesFromPositions(items) {
+            if (items.length === 0) return [];
+            
+            // Group items by Y position (rows)
+            const yTolerance = 5;
+            const rows = [];
+            let currentRow = [items[0]];
+            let currentY = items[0].y;
+            
+            // Sort by Y (descending - PDF coordinates) then X
+            items.sort((a, b) => b.y - a.y || a.x - b.x);
+            
+            for (let i = 1; i < items.length; i++) {
+                const item = items[i];
+                if (Math.abs(item.y - currentY) <= yTolerance) {
+                    currentRow.push(item);
+                } else {
+                    if (currentRow.length > 1) {
+                        currentRow.sort((a, b) => a.x - b.x);
+                        rows.push(currentRow);
+                    }
+                    currentRow = [item];
+                    currentY = item.y;
+                }
+            }
+            if (currentRow.length > 1) {
+                currentRow.sort((a, b) => a.x - b.x);
+                rows.push(currentRow);
+            }
+            
+            if (rows.length < 2) return [];
+            
+            // Determine column positions from the first few rows
+            const allX = [];
+            rows.slice(0, 5).forEach(row => {
+                row.forEach(item => allX.push(item.x));
+            });
+            allX.sort((a, b) => a - b);
+            
+            // Cluster X positions into columns
+            const columnThreshold = 30;
+            const columns = [];
+            let lastX = -1000;
+            allX.forEach(x => {
+                if (x - lastX > columnThreshold) {
+                    columns.push(x);
+                    lastX = x;
+                }
+            });
+            
+            // Build table data
+            const tableRows = rows.map(row => {
+                const cells = new Array(columns.length).fill('');
+                row.forEach(item => {
+                    // Find closest column
+                    let minDist = Infinity;
+                    let colIndex = 0;
+                    columns.forEach((colX, idx) => {
+                        const dist = Math.abs(item.x - colX);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            colIndex = idx;
+                        }
+                    });
+                    cells[colIndex] = cells[colIndex] ? cells[colIndex] + ' ' + item.text : item.text;
+                });
+                return cells;
+            });
+            
+            // Filter out rows with too few cells
+            const validRows = tableRows.filter(row => row.filter(c => c.trim()).length >= 2);
+            
+            if (validRows.length < 2) return [];
+            
+            // First row is headers
+            const headers = validRows[0].map((h, i) => h.trim() || `Column ${i + 1}`);
+            const dataRows = validRows.slice(1);
+            
+            return [{
+                title: 'Extracted Table',
+                headers: headers,
+                rows: dataRows
+            }];
+        }
+        
+        // AI-powered Extraction
+        async function extractWithAI(text) {
+            const prompt = `Extract ALL tables from this text. Return ONLY a valid JSON object with this structure:
+{
+    "tables": [
+        {
+            "title": "Table name or null",
+            "headers": ["Column1", "Column2"],
+            "rows": [
+                ["value1", "value2"],
+                ["value3", "value4"]
+            ]
+        }
+    ]
+}
+
+If no clear tables are found, look for any tabular data patterns.
+Text content:
+${text.substring(0, 6000)}`;
+
+            const response = await fetch(GROQ_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: MODEL,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 4096,
+                    temperature: 0.1
+                })
+            });
+            
+            if (!response.ok) throw new Error('AI extraction failed');
+            
+            const result = await response.json();
+            const content = result.choices[0]?.message?.content;
+            
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('Could not parse AI response');
+            
+            const parsed = JSON.parse(jsonMatch[0]);
+            return parsed.tables || [];
+        }
+        
+        async function incrementUsage(userId) {
+            const userRef = db.collection('users').doc(userId);
+            const userDoc = await userRef.get();
+            
+            if (userDoc.exists) {
+                const data = userDoc.data();
+                if (new Date() > data.usageResetDate.toDate()) {
+                    await userRef.update({
+                        usageCount: 1,
+                        usageResetDate: getNextMonthDate()
+                    });
+                } else {
+                    await userRef.update({
+                        usageCount: firebase.firestore.FieldValue.increment(1)
+                    });
+                }
+            }
+        }
+        
+        function getNextMonthDate() {
+            const now = new Date();
+            return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
+        
+        function displayResults() {
+            const tableCount = extractedTables.length;
+            document.getElementById('results-summary').textContent = 
+                `Found ${tableCount} table${tableCount > 1 ? 's' : ''}`;
+            
+            const selectorContainer = document.getElementById('table-selector');
+            if (tableCount > 1) {
+                selectorContainer.classList.remove('hidden');
+                selectorContainer.innerHTML = extractedTables.map((table, i) => `
+                    <button class="table-tab ${i === 0 ? 'active' : ''}" onclick="selectTable(${i})">
+                        ${table.title || `Table ${i + 1}`}
+                    </button>
+                `).join('');
+            } else {
+                selectorContainer.classList.add('hidden');
+            }
+            
+            displayTable(0);
+        }
+        
+        function selectTable(index) {
+            currentTableIndex = index;
+            document.querySelectorAll('.table-tab').forEach((tab, i) => {
+                tab.classList.toggle('active', i === index);
+            });
+            displayTable(index);
+        }
+        
+        function displayTable(index) {
+            const table = extractedTables[index];
+            if (!table) return;
+            
+            const tableElement = document.getElementById('extracted-table');
+            const headers = table.headers || [];
+            const rows = table.rows || [];
+            
+            document.getElementById('stat-rows').textContent = rows.length;
+            document.getElementById('stat-cols').textContent = headers.length;
+            document.getElementById('stat-mode').textContent = extractionMode === 'ai' ? 'AI-Powered' : 'Standard';
+            
+            let html = '';
+            
+            if (headers.length > 0) {
+                html += '<thead><tr>';
+                headers.forEach(h => {
+                    html += `<th>${escapeHtml(h)}</th>`;
+                });
+                html += '</tr></thead>';
+            }
+            
+            html += '<tbody>';
+            rows.forEach(row => {
+                html += '<tr>';
+                row.forEach(cell => {
+                    html += `<td>${escapeHtml(cell)}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody>';
+            
+            tableElement.innerHTML = html;
+        }
+        
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+        
+        function resetExtractor() {
+            clearFile();
+            extractedTables = [];
+            currentTableIndex = 0;
+            document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('error-section').classList.add('hidden');
+            document.getElementById('upload-section').classList.remove('hidden');
+            document.getElementById('progress-bar').style.width = '0%';
+        }
+        
+        // Download Functions
+        function downloadCSV() {
+            if (extractedTables.length === 0) return;
+            
+            const table = extractedTables[currentTableIndex];
+            let csv = '';
+            
+            if (table.headers && table.headers.length > 0) {
+                csv += table.headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(',') + '\n';
+            }
+            
+            table.rows.forEach(row => {
+                csv += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',') + '\n';
+            });
+            
+            const filename = table.title ? 
+                `${table.title.replace(/[^a-z0-9]/gi, '_')}.csv` : 
+                'table-data.csv';
+            
+            downloadFile(csv, filename, 'text/csv');
+            showToast('CSV downloaded!', 'success');
+        }
+        
+        function downloadExcel() {
+            if (extractedTables.length === 0) return;
+            
+            const table = extractedTables[currentTableIndex];
+            let tsv = '';
+            
+            if (table.headers && table.headers.length > 0) {
+                tsv += table.headers.join('\t') + '\n';
+            }
+            
+            table.rows.forEach(row => {
+                tsv += row.join('\t') + '\n';
+            });
+            
+            const filename = table.title ? 
+                `${table.title.replace(/[^a-z0-9]/gi, '_')}.xls` : 
+                'table-data.xls';
+            
+            downloadFile(tsv, filename, 'application/vnd.ms-excel');
+            showToast('Excel file downloaded!', 'success');
+        }
+        
+        function downloadJSON() {
+            if (extractedTables.length === 0) return;
+            
+            const table = extractedTables[currentTableIndex];
+            const headers = table.headers || [];
+            
+            const jsonData = table.rows.map(row => {
+                const obj = {};
+                headers.forEach((h, i) => {
+                    obj[h] = row[i] || '';
+                });
+                return obj;
+            });
+            
+            const filename = table.title ? 
+                `${table.title.replace(/[^a-z0-9]/gi, '_')}.json` : 
+                'table-data.json';
+            
+            downloadFile(JSON.stringify(jsonData, null, 2), filename, 'application/json');
+            showToast('JSON downloaded!', 'success');
+        }
+        
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl ${
+                type === 'success' ? 'bg-[#1d1d1f] text-white' : 'bg-[#ff3b30] text-white'
+            }`;
+            
+            const icon = type === 'success' 
+                ? '<svg class="w-5 h-5 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+            
+            toast.innerHTML = `${icon}<span class="text-sm font-medium">${message}</span>`;
+            container.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
