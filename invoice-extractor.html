@@ -159,7 +159,7 @@
         
         .credit-option.selected {
             border-color: #0071e3;
-            background: #0071e3/5;
+            background: rgba(0, 113, 227, 0.05);
         }
     </style>
 </head>
@@ -540,9 +540,10 @@
         let currentUser = null;
         let selectedFile = null;
         let extractedData = null;
-        let extractionMode = 'standard'; // 'standard' or 'ai'
+        let extractionMode = 'standard';
         let selectedCredits = { amount: 10, price: 5 };
-        let pdfText = '';
+        let pdfTextItems = []; // Store text items with positions
+        let pdfFullText = '';
         
         // Auth State Observer
         auth.onAuthStateChanged((user) => {
@@ -629,7 +630,7 @@
             if (mode === 'standard') {
                 description.textContent = 'Standard extraction uses pattern matching to find invoice data. Works best with digital PDFs.';
             } else {
-                description.textContent = 'AI-powered extraction uses advanced vision AI for higher accuracy. Uses 1 AI credit per extraction.';
+                description.textContent = 'AI-powered extraction uses advanced AI for higher accuracy. Uses 1 AI credit per extraction.';
             }
         }
         
@@ -656,10 +657,8 @@
                 return;
             }
             
-            // In production, this would integrate with Stripe
             showToast(`Redirecting to payment for ${selectedCredits.amount} credits ($${selectedCredits.price})...`, 'success');
             
-            // Simulate adding credits (in production, this would be done after Stripe webhook)
             setTimeout(async () => {
                 const userRef = db.collection('users').doc(currentUser.uid);
                 await userRef.update({
@@ -717,7 +716,8 @@
         
         function clearFile() {
             selectedFile = null;
-            pdfText = '';
+            pdfTextItems = [];
+            pdfFullText = '';
             fileInput.value = '';
             document.getElementById('file-info').classList.add('hidden');
             document.getElementById('extract-btn').classList.add('hidden');
@@ -745,7 +745,6 @@
             const userDoc = await db.collection('users').doc(currentUser.uid).get();
             const userData = userDoc.data();
             
-            // Check limits based on mode
             if (extractionMode === 'ai') {
                 const aiCredits = userData.aiCredits || 0;
                 if (aiCredits < 1) {
@@ -761,37 +760,67 @@
                 }
             }
             
-            // Show processing
             document.getElementById('upload-section').classList.add('hidden');
             document.getElementById('processing-section').classList.remove('hidden');
             
             try {
                 updateProgress(10, 'Reading PDF content...');
                 
-                // Extract text from PDF
+                // Extract text with position data
                 const arrayBuffer = await selectedFile.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 
+                pdfTextItems = [];
                 let fullText = '';
+                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + '\n';
+                    
+                    // Get text items with their positions
+                    textContent.items.forEach(item => {
+                        if (item.str && item.str.trim()) {
+                            pdfTextItems.push({
+                                text: item.str,
+                                x: Math.round(item.transform[4]),
+                                y: Math.round(item.transform[5]),
+                                width: item.width,
+                                height: item.height,
+                                page: i
+                            });
+                        }
+                    });
+                    
+                    // Build full text with line breaks based on Y position
+                    const pageItems = textContent.items.filter(item => item.str && item.str.trim());
+                    pageItems.sort((a, b) => b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]);
+                    
+                    let lastY = null;
+                    pageItems.forEach(item => {
+                        const y = Math.round(item.transform[5]);
+                        if (lastY !== null && Math.abs(y - lastY) > 5) {
+                            fullText += '\n';
+                        } else if (lastY !== null) {
+                            fullText += ' ';
+                        }
+                        fullText += item.str;
+                        lastY = y;
+                    });
+                    fullText += '\n\n';
                 }
-                pdfText = fullText;
+                
+                pdfFullText = fullText;
+                console.log('Extracted text:', pdfFullText); // Debug
                 
                 updateProgress(40, extractionMode === 'ai' ? 'Analyzing with AI...' : 'Extracting invoice data...');
                 
                 if (extractionMode === 'ai') {
-                    extractedData = await extractWithAI(fullText);
-                    // Deduct AI credit
+                    extractedData = await extractWithAI(pdfFullText);
                     await db.collection('users').doc(currentUser.uid).update({
                         aiCredits: firebase.firestore.FieldValue.increment(-1)
                     });
                 } else {
-                    extractedData = extractWithPatterns(fullText);
-                    // Increment regular usage
+                    extractedData = extractWithPatterns(pdfFullText, pdfTextItems);
                     await incrementUsage(currentUser.uid);
                 }
                 
@@ -819,8 +848,8 @@
             }
         }
         
-        // Standard Pattern-based Extraction
-        function extractWithPatterns(text) {
+        // Robust Pattern-based Extraction
+        function extractWithPatterns(text, textItems) {
             const data = {
                 vendor_name: null,
                 invoice_number: null,
@@ -833,94 +862,290 @@
                 line_items: []
             };
             
-            // Extract Invoice Number
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+            
+            // ============ INVOICE NUMBER ============
             const invoicePatterns = [
-                /invoice\s*#?\s*:?\s*([A-Z0-9\-]+)/i,
-                /inv\s*#?\s*:?\s*([A-Z0-9\-]+)/i,
-                /invoice\s+number\s*:?\s*([A-Z0-9\-]+)/i,
-                /#\s*([A-Z0-9\-]+)/i
+                /invoice\s*#?\s*:?\s*([A-Z0-9][\w\-\/]{1,25})/i,
+                /invoice\s+(?:no|number|num)\.?\s*:?\s*([A-Z0-9][\w\-\/]{1,25})/i,
+                /inv[#\-.\s:]+([A-Z0-9][\w\-\/]{1,25})/i,
+                /(?:bill|receipt)\s*(?:no|number|#)?\.?\s*:?\s*([A-Z0-9][\w\-\/]{1,25})/i,
+                /(?:reference|ref)\s*(?:no|number|#)?\.?\s*:?\s*([A-Z0-9][\w\-\/]{1,25})/i,
+                /document\s*(?:no|number|#)?\.?\s*:?\s*([A-Z0-9][\w\-\/]{1,25})/i,
+                /^#?\s*([A-Z]{2,4}[\-]?\d{3,10})$/im
             ];
+            
             for (const pattern of invoicePatterns) {
                 const match = text.match(pattern);
-                if (match) {
-                    data.invoice_number = match[1];
-                    break;
+                if (match && match[1] && match[1].length >= 2 && match[1].length <= 25) {
+                    // Validate it looks like an invoice number
+                    if (/\d/.test(match[1])) {
+                        data.invoice_number = match[1].trim();
+                        break;
+                    }
                 }
             }
             
-            // Extract Dates
-            const datePatterns = [
-                /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/g,
-                /([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/g,
-                /(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/g
+            // ============ DATES ============
+            const dateRegexes = [
+                /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/g,
+                /(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/g,
+                /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})/gi,
+                /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4})/gi
             ];
-            const dates = [];
-            for (const pattern of datePatterns) {
-                const matches = text.matchAll(pattern);
-                for (const match of matches) {
-                    dates.push(match[1]);
+            
+            const allDates = [];
+            for (const regex of dateRegexes) {
+                let match;
+                const r = new RegExp(regex.source, regex.flags);
+                while ((match = r.exec(text)) !== null) {
+                    allDates.push({ date: match[0], index: match.index });
                 }
             }
-            if (dates.length > 0) data.invoice_date = dates[0];
-            if (dates.length > 1) data.due_date = dates[1];
+            allDates.sort((a, b) => a.index - b.index);
             
-            // Extract Amounts
-            const amountPattern = /\$?\s*([\d,]+\.?\d{0,2})/g;
+            // Look for labeled dates
+            const invoiceDatePatterns = [
+                /(?:invoice|bill|document)\s*date\s*:?\s*([^\n]{5,25})/i,
+                /date\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+                /date\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})/i
+            ];
+            
+            for (const pattern of invoiceDatePatterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    const dateStr = match[1].match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?,?\s+\d{4}/i);
+                    if (dateStr) {
+                        data.invoice_date = dateStr[0];
+                        break;
+                    }
+                }
+            }
+            
+            if (!data.invoice_date && allDates.length > 0) {
+                data.invoice_date = allDates[0].date;
+            }
+            
+            // Due date
+            const dueDatePatterns = [
+                /(?:due|payment|pay\s*by)\s*date\s*:?\s*([^\n]{5,25})/i,
+                /due\s*:?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
+            ];
+            
+            for (const pattern of dueDatePatterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    const dateStr = match[1].match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i);
+                    if (dateStr) {
+                        data.due_date = dateStr[0];
+                        break;
+                    }
+                }
+            }
+            
+            // ============ AMOUNTS ============
+            // Find all currency amounts
+            const amountRegex = /\$\s*([\d,]+\.?\d{0,2})|(?:USD|EUR|GBP|CAD|AUD)\s*([\d,]+\.?\d{0,2})|([\d,]+\.\d{2})\s*(?:USD|EUR|GBP|CAD|AUD)?/gi;
             const amounts = [];
             let match;
-            while ((match = amountPattern.exec(text)) !== null) {
-                const value = parseFloat(match[1].replace(/,/g, ''));
+            while ((match = amountRegex.exec(text)) !== null) {
+                const value = parseFloat((match[1] || match[2] || match[3]).replace(/,/g, ''));
                 if (value > 0 && value < 10000000) {
-                    amounts.push(value);
+                    amounts.push({ value, index: match.index, text: match[0] });
                 }
             }
             
-            // Sort amounts and guess which is which
-            amounts.sort((a, b) => b - a);
-            if (amounts.length > 0) data.total = amounts[0];
-            if (amounts.length > 1) data.subtotal = amounts[1];
-            if (amounts.length > 2) data.tax = amounts[0] - amounts[1];
+            // Look for labeled amounts
+            const totalPatterns = [
+                /(?:grand\s*)?total\s*(?:amount|due)?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /amount\s*(?:due|payable|owing)\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /balance\s*(?:due)?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /total\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i
+            ];
             
-            // Extract Vendor Name (usually first few lines)
-            const lines = text.split(/\n|\s{3,}/);
-            const nonEmptyLines = lines.filter(l => l.trim().length > 2 && !/invoice|date|total|amount|qty/i.test(l));
-            if (nonEmptyLines.length > 0) {
-                data.vendor_name = nonEmptyLines[0].trim().substring(0, 50);
+            for (const pattern of totalPatterns) {
+                const m = text.match(pattern);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1].replace(/,/g, ''));
+                    if (val > 0) {
+                        data.total = val;
+                        break;
+                    }
+                }
             }
             
-            // Try to extract line items (basic pattern)
-            const lineItemPattern = /([A-Za-z\s]+)\s+(\d+)\s+\$?([\d,]+\.?\d{0,2})\s+\$?([\d,]+\.?\d{0,2})/g;
-            while ((match = lineItemPattern.exec(text)) !== null) {
-                data.line_items.push({
-                    description: match[1].trim(),
-                    quantity: parseInt(match[2]),
-                    unit_price: parseFloat(match[3].replace(/,/g, '')),
-                    amount: parseFloat(match[4].replace(/,/g, ''))
-                });
+            const subtotalPatterns = [
+                /sub[\s\-]?total\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /net\s*(?:amount|total)?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i
+            ];
+            
+            for (const pattern of subtotalPatterns) {
+                const m = text.match(pattern);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1].replace(/,/g, ''));
+                    if (val > 0) {
+                        data.subtotal = val;
+                        break;
+                    }
+                }
             }
+            
+            const taxPatterns = [
+                /(?:sales\s*)?tax\s*(?:\(\d+%?\))?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /vat\s*(?:\(\d+%?\))?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /gst\s*(?:\(\d+%?\))?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+                /hst\s*(?:\(\d+%?\))?\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i
+            ];
+            
+            for (const pattern of taxPatterns) {
+                const m = text.match(pattern);
+                if (m && m[1]) {
+                    const val = parseFloat(m[1].replace(/,/g, ''));
+                    if (val > 0 && val < 100000) { // Tax shouldn't be huge
+                        data.tax = val;
+                        break;
+                    }
+                }
+            }
+            
+            // Fallback: Use largest amounts
+            if (!data.total && amounts.length > 0) {
+                const sortedAmounts = [...amounts].sort((a, b) => b.value - a.value);
+                data.total = sortedAmounts[0].value;
+                
+                if (sortedAmounts.length > 1 && !data.subtotal) {
+                    // Find amount that's close to total but slightly less
+                    for (const amt of sortedAmounts.slice(1)) {
+                        if (amt.value < data.total && amt.value > data.total * 0.7) {
+                            data.subtotal = amt.value;
+                            break;
+                        }
+                    }
+                }
+                
+                if (data.total && data.subtotal && !data.tax) {
+                    const diff = data.total - data.subtotal;
+                    if (diff > 0 && diff < data.subtotal * 0.3) {
+                        data.tax = Math.round(diff * 100) / 100;
+                    }
+                }
+            }
+            
+            // ============ VENDOR NAME ============
+            // Look at first few lines for company name
+            const vendorExclusions = /^(invoice|bill|receipt|date|to|from|page|total|amount|qty|tax|ship|sold|customer|client|statement|order|po\s|#|\d)/i;
+            
+            // Try explicit labels first
+            const vendorLabels = [
+                /(?:from|vendor|supplier|seller|company|billed?\s*by)\s*:?\s*([A-Za-z][A-Za-z0-9\s&.,'-]+)/i
+            ];
+            
+            for (const pattern of vendorLabels) {
+                const m = text.match(pattern);
+                if (m && m[1]) {
+                    const name = m[1].trim().split('\n')[0].trim();
+                    if (name.length >= 2 && name.length <= 60) {
+                        data.vendor_name = name;
+                        break;
+                    }
+                }
+            }
+            
+            // Fallback: First substantial line
+            if (!data.vendor_name) {
+                for (let i = 0; i < Math.min(lines.length, 10); i++) {
+                    const line = lines[i];
+                    if (line.length >= 3 && line.length <= 60 &&
+                        !vendorExclusions.test(line) &&
+                        /[A-Za-z]{2,}/.test(line) &&
+                        !/^\d+$/.test(line)) {
+                        data.vendor_name = line;
+                        break;
+                    }
+                }
+            }
+            
+            // ============ LINE ITEMS ============
+            // Look for patterns like: Description Qty Price Amount
+            const lineItemPatterns = [
+                // Full pattern with qty, unit price, and total
+                /^(.{3,50}?)\s+(\d+(?:\.\d+)?)\s+\$?([\d,]+\.?\d{0,2})\s+\$?([\d,]+\.?\d{0,2})$/,
+                // Description and amount only
+                /^(.{5,60}?)\s+\$?([\d,]+\.\d{2})$/
+            ];
+            
+            for (const line of lines) {
+                // Skip headers and totals
+                if (/^(description|item|product|service|qty|quantity|unit|price|amount|total|subtotal|tax|shipping|discount)/i.test(line)) continue;
+                if (/^(total|subtotal|tax|balance|amount\s*due|grand\s*total)/i.test(line)) continue;
+                
+                // Try full pattern
+                const fullMatch = line.match(/^(.{3,50}?)\s+(\d+(?:\.\d+)?)\s+\$?([\d,]+\.?\d{0,2})\s+\$?([\d,]+\.?\d{0,2})$/);
+                if (fullMatch) {
+                    const desc = fullMatch[1].trim();
+                    if (desc.length >= 3 && !/^(total|tax|sub)/i.test(desc)) {
+                        data.line_items.push({
+                            description: desc,
+                            quantity: parseFloat(fullMatch[2]),
+                            unit_price: parseFloat(fullMatch[3].replace(/,/g, '')),
+                            amount: parseFloat(fullMatch[4].replace(/,/g, ''))
+                        });
+                        continue;
+                    }
+                }
+                
+                // Try simpler pattern
+                const simpleMatch = line.match(/^(.{5,60}?)\s+\$?([\d,]+\.\d{2})$/);
+                if (simpleMatch) {
+                    const desc = simpleMatch[1].trim();
+                    if (desc.length >= 5 && !/^(total|tax|sub|balance|amount|date|invoice)/i.test(desc)) {
+                        data.line_items.push({
+                            description: desc,
+                            quantity: 1,
+                            unit_price: parseFloat(simpleMatch[2].replace(/,/g, '')),
+                            amount: parseFloat(simpleMatch[2].replace(/,/g, ''))
+                        });
+                    }
+                }
+            }
+            
+            // Detect currency
+            if (/€/.test(text)) data.currency = 'EUR';
+            else if (/£/.test(text)) data.currency = 'GBP';
+            else if (/¥/.test(text)) data.currency = 'JPY';
+            else if (/CAD|C\$/.test(text)) data.currency = 'CAD';
+            else if (/AUD|A\$/.test(text)) data.currency = 'AUD';
             
             return data;
         }
         
         // AI-powered Extraction
         async function extractWithAI(text) {
-            const prompt = `Extract invoice data from this text. Return ONLY a valid JSON object with this structure:
+            const prompt = `You are an invoice data extraction expert. Extract ALL data from this invoice text and return ONLY a valid JSON object.
+
+Required JSON structure:
 {
-    "vendor_name": "string",
-    "invoice_number": "string",
-    "invoice_date": "string",
-    "due_date": "string or null",
-    "subtotal": number,
-    "tax": number,
-    "total": number,
-    "currency": "USD",
+    "vendor_name": "Company name that issued the invoice",
+    "invoice_number": "Invoice ID/number",
+    "invoice_date": "Date of invoice",
+    "due_date": "Payment due date or null",
+    "subtotal": number (before tax),
+    "tax": number (tax amount),
+    "total": number (final total),
+    "currency": "USD/EUR/GBP/etc",
     "line_items": [
-        {"description": "string", "quantity": number, "unit_price": number, "amount": number}
+        {"description": "Item description", "quantity": number, "unit_price": number, "amount": number}
     ]
 }
 
+Rules:
+- Return ONLY the JSON object, no other text
+- Use null for missing values
+- Numbers should be actual numbers, not strings
+- Extract ALL line items if present
+
 Invoice text:
-${text.substring(0, 4000)}`;
+${text.substring(0, 6000)}`;
 
             const response = await fetch(GROQ_API_URL, {
                 method: 'POST',
@@ -937,12 +1162,13 @@ ${text.substring(0, 4000)}`;
             });
             
             if (!response.ok) {
-                throw new Error('AI extraction failed');
+                throw new Error('AI extraction failed. Please try again.');
             }
             
             const result = await response.json();
             const content = result.choices[0]?.message?.content;
             
+            // Extract JSON from response
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (!jsonMatch) throw new Error('Could not parse AI response');
             
@@ -976,7 +1202,10 @@ ${text.substring(0, 4000)}`;
         function displayResults(data) {
             const formatCurrency = (value) => {
                 if (value === null || value === undefined) return 'N/A';
-                return new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency || 'USD' }).format(value);
+                return new Intl.NumberFormat('en-US', { 
+                    style: 'currency', 
+                    currency: data.currency || 'USD' 
+                }).format(value);
             };
             
             const fields = [
@@ -984,9 +1213,9 @@ ${text.substring(0, 4000)}`;
                 { label: 'Invoice Number', value: data.invoice_number },
                 { label: 'Invoice Date', value: data.invoice_date },
                 { label: 'Due Date', value: data.due_date },
-                { label: 'Subtotal', value: formatCurrency(data.subtotal) },
-                { label: 'Tax', value: formatCurrency(data.tax) },
-                { label: 'Total Amount', value: formatCurrency(data.total), highlight: true }
+                { label: 'Subtotal', value: data.subtotal ? formatCurrency(data.subtotal) : null },
+                { label: 'Tax', value: data.tax ? formatCurrency(data.tax) : null },
+                { label: 'Total Amount', value: data.total ? formatCurrency(data.total) : null, highlight: true }
             ];
             
             document.getElementById('invoice-details').innerHTML = fields
@@ -1030,18 +1259,19 @@ ${text.substring(0, 4000)}`;
             if (!extractedData) return;
             
             let csv = 'Field,Value\n';
-            csv += `Vendor Name,"${extractedData.vendor_name || ''}"\n`;
-            csv += `Invoice Number,"${extractedData.invoice_number || ''}"\n`;
-            csv += `Invoice Date,"${extractedData.invoice_date || ''}"\n`;
-            csv += `Due Date,"${extractedData.due_date || ''}"\n`;
+            csv += `Vendor Name,"${(extractedData.vendor_name || '').replace(/"/g, '""')}"\n`;
+            csv += `Invoice Number,"${(extractedData.invoice_number || '').replace(/"/g, '""')}"\n`;
+            csv += `Invoice Date,"${(extractedData.invoice_date || '').replace(/"/g, '""')}"\n`;
+            csv += `Due Date,"${(extractedData.due_date || '').replace(/"/g, '""')}"\n`;
             csv += `Subtotal,${extractedData.subtotal || 0}\n`;
             csv += `Tax,${extractedData.tax || 0}\n`;
             csv += `Total,${extractedData.total || 0}\n`;
+            csv += `Currency,${extractedData.currency || 'USD'}\n`;
             
             if (extractedData.line_items && extractedData.line_items.length > 0) {
                 csv += '\nLine Items\nDescription,Quantity,Unit Price,Amount\n';
                 extractedData.line_items.forEach(item => {
-                    csv += `"${item.description || ''}",${item.quantity || 0},${item.unit_price || 0},${item.amount || 0}\n`;
+                    csv += `"${(item.description || '').replace(/"/g, '""')}",${item.quantity || 0},${item.unit_price || 0},${item.amount || 0}\n`;
                 });
             }
             
@@ -1052,13 +1282,16 @@ ${text.substring(0, 4000)}`;
         function downloadExcel() {
             if (!extractedData) return;
             
+            // Create tab-separated values for Excel
             let tsv = 'Field\tValue\n';
             tsv += `Vendor Name\t${extractedData.vendor_name || ''}\n`;
             tsv += `Invoice Number\t${extractedData.invoice_number || ''}\n`;
             tsv += `Invoice Date\t${extractedData.invoice_date || ''}\n`;
+            tsv += `Due Date\t${extractedData.due_date || ''}\n`;
             tsv += `Subtotal\t${extractedData.subtotal || 0}\n`;
             tsv += `Tax\t${extractedData.tax || 0}\n`;
             tsv += `Total\t${extractedData.total || 0}\n`;
+            tsv += `Currency\t${extractedData.currency || 'USD'}\n`;
             
             if (extractedData.line_items && extractedData.line_items.length > 0) {
                 tsv += '\nLine Items\nDescription\tQuantity\tUnit Price\tAmount\n';
@@ -1073,7 +1306,8 @@ ${text.substring(0, 4000)}`;
         
         function downloadJSON() {
             if (!extractedData) return;
-            downloadFile(JSON.stringify(extractedData, null, 2), `invoice-${extractedData.invoice_number || 'data'}.json`, 'application/json');
+            const json = JSON.stringify(extractedData, null, 2);
+            downloadFile(json, `invoice-${extractedData.invoice_number || 'data'}.json`, 'application/json');
             showToast('JSON downloaded!', 'success');
         }
         
@@ -1083,7 +1317,9 @@ ${text.substring(0, 4000)}`;
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
+            document.body.appendChild(a);
             a.click();
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
         
