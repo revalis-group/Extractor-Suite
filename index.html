@@ -815,15 +815,65 @@
             
             <!-- Pricing Cards -->
             <div class="grid md:grid-cols-3 gap-8 items-start">
-                <!-- Free Plan -->
+                <!-- Starter Plan -->
                 <div class="card-hover bg-white rounded-3xl p-8 border border-gray-200 scroll-animate">
-                    <h3 class="text-xl font-semibold mb-2">Free</h3>
-                    <p class="text-[#6e6e73] text-sm mb-6">Perfect for trying it out</p>
+                    <h3 class="text-xl font-semibold mb-2">Starter</h3>
+                    <p class="text-[#6e6e73] text-sm mb-6">Perfect for small businesses</p>
                     <div class="mb-6">
-                        <span class="text-5xl font-semibold">$0</span>
+                        <span class="text-5xl font-semibold" id="starter-price">$39</span>
                         <span class="text-[#6e6e73]">/month</span>
+                        <p class="text-sm text-[#86868b] mt-1" id="starter-billing">billed annually</p>
                     </div>
                     <button onclick="openAuthModal('signup')" class="block w-full py-3 px-6 text-center border-2 border-[#0071e3] text-[#0071e3] font-medium rounded-full hover:bg-[#0071e3] hover:text-white transition-colors mb-8">
+                        Start 7-day Free Trial
+                    </button>
+                    <ul class="space-y-4">
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            100 extractions/month
+                        </li>
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            10 AI credits/month
+                        </li>
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Invoice & Table extractor
+                        </li>
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            CSV, JSON & Excel export
+                        </li>
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Email support
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- Professional Plan (Featured) -->
+                <div class="card-hover bg-[#1d1d1f] rounded-3xl p-8 text-white relative transform md:scale-105 shadow-2xl scroll-animate">
+                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#0071e3] text-white text-xs font-semibold px-4 py-1 rounded-full">
+                        Most Popular
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Professional</h3>
+                    <p class="text-[#86868b] text-sm mb-6">For growing teams</p>
+                    <div class="mb-6">
+                        <span class="text-5xl font-semibold" id="pro-price">$79</span>
+                        <span class="text-[#86868b]">/month</span>
+                        <p class="text-sm text-[#86868b] mt-1" id="pro-billing">billed annually</p>
+                    </div>
+                    <button onclick="openAuthModal('signup')" class="block w-full py-3 px-6 text-center bg-[#0071e3] text-white font-medium rounded-full hover:bg-[#0077ED] transition-colors mb-8">
                         Get Started
                     </button>
                     <ul class="space-y-4">
@@ -831,55 +881,46 @@
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            10 extractions/month
+                            500 extractions/month
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            Invoice extractor
+                            50 AI credits/month
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            Table extractor
+                            Batch upload (25 files)
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            CSV & JSON export
+                            Priority support
                         </li>
-                        <li class="flex items-center gap-3 text-sm text-[#86868b]">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                        <li class="flex items-center gap-3 text-sm">
+                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            No AI-powered mode
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-[#86868b]">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
-                            </svg>
-                            No API access
+                            API access (1k calls)
                         </li>
                     </ul>
                 </div>
                 
-                <!-- Pro Plan (Featured) -->
-                <div class="card-hover bg-[#1d1d1f] rounded-3xl p-8 text-white relative transform md:scale-105 shadow-2xl scroll-animate">
-                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#0071e3] text-white text-xs font-semibold px-4 py-1 rounded-full">
-                        Most Popular
-                    </div>
-                    <h3 class="text-xl font-semibold mb-2">Pro</h3>
-                    <p class="text-[#86868b] text-sm mb-6">For growing businesses</p>
+                <!-- Enterprise Plan -->
+                <div class="card-hover bg-white rounded-3xl p-8 border border-gray-200 scroll-animate">
+                    <h3 class="text-xl font-semibold mb-2">Enterprise</h3>
+                    <p class="text-[#6e6e73] text-sm mb-6">For large organizations</p>
                     <div class="mb-6">
-                        <span class="text-5xl font-semibold" id="pro-price">$23</span>
-                        <span class="text-[#86868b]">/month</span>
-                        <p class="text-sm text-[#86868b] mt-1" id="pro-billing">billed annually</p>
+                        <span class="text-5xl font-semibold" id="enterprise-price">$159</span>
+                        <span class="text-[#6e6e73]">/month</span>
+                        <p class="text-sm text-[#86868b] mt-1" id="enterprise-billing">billed annually</p>
                     </div>
-                    <button onclick="openAuthModal('signup')" class="block w-full py-3 px-6 text-center bg-[#0071e3] text-white font-medium rounded-full hover:bg-[#0077ED] transition-colors mb-8">
-                        Start Free Trial
+                    <button onclick="openAuthModal('signup')" class="block w-full py-3 px-6 text-center border-2 border-[#0071e3] text-[#0071e3] font-medium rounded-full hover:bg-[#0071e3] hover:text-white transition-colors mb-8">
+                        Contact Sales
                     </button>
                     <ul class="space-y-4">
                         <li class="flex items-center gap-3 text-sm">
@@ -892,77 +933,19 @@
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            50 AI credits/month
-                        </li>
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            Invoice & table extractor
-                        </li>
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            CSV, JSON & Excel export
-                        </li>
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            Priority support
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-[#86868b]">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
-                            </svg>
-                            No API access
-                        </li>
-                    </ul>
-                </div>
-                
-                <!-- Business Plan -->
-                <div class="card-hover bg-white rounded-3xl p-8 border border-gray-200 scroll-animate">
-                    <h3 class="text-xl font-semibold mb-2">Business</h3>
-                    <p class="text-[#6e6e73] text-sm mb-6">For teams & agencies</p>
-                    <div class="mb-6">
-                        <span class="text-5xl font-semibold" id="business-price">$63</span>
-                        <span class="text-[#6e6e73]">/month</span>
-                        <p class="text-sm text-[#86868b] mt-1" id="business-billing">billed annually</p>
-                    </div>
-                    <button onclick="openAuthModal('signup')" class="block w-full py-3 px-6 text-center border-2 border-[#0071e3] text-[#0071e3] font-medium rounded-full hover:bg-[#0071e3] hover:text-white transition-colors mb-8">
-                        Contact Sales
-                    </button>
-                    <ul class="space-y-4">
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            Everything in Pro
-                        </li>
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
                             200 AI credits/month
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
-                            Full API access
+                            Unlimited API access
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                             </svg>
                             Team collaboration
-                        </li>
-                        <li class="flex items-center gap-3 text-sm">
-                            <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            Dedicated support
                         </li>
                         <li class="flex items-center gap-3 text-sm">
                             <svg class="w-5 h-5 text-[#34c759]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1027,7 +1010,7 @@
             </div>
             
             <p class="text-sm text-[#86868b]">
-                No credit card required · 14-day free trial · Cancel anytime
+                No credit card required · 7-day free trial · Cancel anytime
             </p>
         </div>
     </section>
@@ -1293,10 +1276,12 @@
         
         // Billing Toggle
         const billingToggle = document.getElementById('billing-toggle');
+        const starterPrice = document.getElementById('starter-price');
+        const starterBilling = document.getElementById('starter-billing');
         const proPrice = document.getElementById('pro-price');
         const proBilling = document.getElementById('pro-billing');
-        const businessPrice = document.getElementById('business-price');
-        const businessBilling = document.getElementById('business-billing');
+        const enterprisePrice = document.getElementById('enterprise-price');
+        const enterpriseBilling = document.getElementById('enterprise-billing');
         let isAnnual = true;
         
         billingToggle.addEventListener('click', () => {
@@ -1304,15 +1289,19 @@
             billingToggle.classList.toggle('toggle-active');
             
             if (isAnnual) {
-                proPrice.textContent = '$23';
+                starterPrice.textContent = '$39';
+                starterBilling.textContent = 'billed annually';
+                proPrice.textContent = '$79';
                 proBilling.textContent = 'billed annually';
-                businessPrice.textContent = '$63';
-                businessBilling.textContent = 'billed annually';
+                enterprisePrice.textContent = '$159';
+                enterpriseBilling.textContent = 'billed annually';
             } else {
-                proPrice.textContent = '$29';
+                starterPrice.textContent = '$49';
+                starterBilling.textContent = 'billed monthly';
+                proPrice.textContent = '$99';
                 proBilling.textContent = 'billed monthly';
-                businessPrice.textContent = '$79';
-                businessBilling.textContent = 'billed monthly';
+                enterprisePrice.textContent = '$199';
+                enterpriseBilling.textContent = 'billed monthly';
             }
         });
         
@@ -1587,10 +1576,10 @@
             const userData = {
                 email: user.email,
                 displayName: displayName || user.displayName || 'User',
-                plan: 'free',
+                plan: 'starter',
                 usageCount: 0,
-                usageLimit: 10,
-                aiCredits: 0,  // AI credits for AI-powered extraction
+                usageLimit: 100,
+                aiCredits: 10,
                 usageResetDate: getNextMonthDate(),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 stripeCustomerId: null
