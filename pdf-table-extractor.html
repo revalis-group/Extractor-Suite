@@ -355,7 +355,7 @@
                 <!-- Mode Description -->
                 <div class="text-center mb-6">
                     <p id="mode-description" class="text-sm text-[#6e6e73]">
-                        Standard extraction detects tables using text positioning. Works best with simple, well-formatted tables.
+                        Standard extraction uses intelligent column detection and row deduplication for clean results.
                     </p>
                 </div>
                 
@@ -578,10 +578,10 @@
         // Set PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
-        // Groq API Configuration (for AI mode)
-        const GROQ_API_KEY = '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';
+        // Groq API Configuration - Using Llama 4 Maverick
+        const GROQ_API_KEY = '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';
         const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-        const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+        const MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
         
         // Firebase Configuration
         const firebaseConfig = {
@@ -604,6 +604,7 @@
         let currentTableIndex = 0;
         let extractionMode = 'standard';
         let selectedCredits = { amount: 10, price: 5 };
+        let pdfTextItems = [];
         
         // Auth State Observer
         auth.onAuthStateChanged((user) => {
@@ -688,9 +689,9 @@
             
             const description = document.getElementById('mode-description');
             if (mode === 'standard') {
-                description.textContent = 'Standard extraction detects tables using text positioning. Works best with simple, well-formatted tables.';
+                description.textContent = 'Standard extraction uses intelligent column detection and row deduplication for clean results.';
             } else {
-                description.textContent = 'AI-powered extraction uses advanced AI for complex tables and scanned documents. Uses 1 AI credit per extraction.';
+                description.textContent = 'AI-powered extraction uses Llama 4 Maverick for complex tables and scanned documents. Uses 1 AI credit per extraction.';
             }
         }
         
@@ -776,6 +777,7 @@
         
         function clearFile() {
             selectedFile = null;
+            pdfTextItems = [];
             fileInput.value = '';
             document.getElementById('file-info').classList.add('hidden');
             document.getElementById('extract-btn').classList.add('hidden');
@@ -792,7 +794,9 @@
             document.getElementById('processing-status').textContent = status;
         }
         
-        // Main Extraction Function
+        // ============================================
+        // MAIN EXTRACTION FUNCTION
+        // ============================================
         async function extractTable() {
             if (!currentUser) {
                 showToast('Please sign in to extract tables', 'error');
@@ -811,8 +815,8 @@
                     return;
                 }
             } else {
-                if (userData.plan === 'free' && userData.usageCount >= userData.usageLimit) {
-                    showToast('You\'ve reached your free tier limit. Please upgrade.', 'error');
+                if (userData.usageCount >= userData.usageLimit && userData.plan !== 'enterprise') {
+                    showToast('You\'ve reached your plan limit. Please upgrade.', 'error');
                     setTimeout(() => window.location.href = 'index.html#pricing', 2000);
                     return;
                 }
@@ -827,34 +831,39 @@
                 const arrayBuffer = await selectedFile.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 
-                // Extract text with positions for table detection
-                let allItems = [];
+                pdfTextItems = [];
+                let fullText = '';
+                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
+                    
                     textContent.items.forEach(item => {
-                        if (item.str.trim()) {
-                            allItems.push({
+                        if (item.str && item.str.trim()) {
+                            pdfTextItems.push({
                                 text: item.str,
                                 x: Math.round(item.transform[4]),
                                 y: Math.round(item.transform[5]),
                                 width: item.width,
-                                height: item.height
+                                height: item.height,
+                                page: i
                             });
                         }
                     });
+                    
+                    const pageText = textContent.items.map(i => i.str).join(' ');
+                    fullText += pageText + '\n';
                 }
                 
-                updateProgress(40, extractionMode === 'ai' ? 'Analyzing with AI...' : 'Detecting table structure...');
+                updateProgress(40, extractionMode === 'ai' ? 'Analyzing with Llama 4 Maverick...' : 'Detecting table structure...');
                 
                 if (extractionMode === 'ai') {
-                    const fullText = allItems.map(item => item.text).join(' ');
                     extractedTables = await extractWithAI(fullText);
                     await db.collection('users').doc(currentUser.uid).update({
                         aiCredits: firebase.firestore.FieldValue.increment(-1)
                     });
                 } else {
-                    extractedTables = extractTablesFromPositions(allItems);
+                    extractedTables = extractTablesEnhanced(pdfTextItems);
                     await incrementUsage(currentUser.uid);
                 }
                 
@@ -884,50 +893,269 @@
             }
         }
         
-        // Standard Position-based Table Extraction
-        function extractTablesFromPositions(items) {
+        // ============================================
+        // ENHANCED STANDARD TABLE EXTRACTION
+        // Same Multi-Strategy Approach as Invoice Extractor
+        // ============================================
+        function extractTablesEnhanced(items) {
+            console.log('=== TABLE EXTRACTION (STANDARD) ===');
+            console.log('Total items:', items.length);
+            
             if (items.length === 0) return [];
             
-            // Group items by Y position (rows)
-            const yTolerance = 5;
-            const rows = [];
-            let currentRow = [items[0]];
-            let currentY = items[0].y;
-            
-            // Sort by Y (descending - PDF coordinates) then X
+            // Sort items by Y (descending - top to bottom) then X (left to right)
             items.sort((a, b) => b.y - a.y || a.x - b.x);
+            
+            // Build rows by grouping items with similar Y coordinates
+            const rows = buildRows(items);
+            console.log('Total rows detected:', rows.length);
+            
+            // Detect table regions using multiple strategies
+            const tableRegions = detectTableRegions(rows);
+            console.log('Table regions found:', tableRegions.length);
+            
+            if (tableRegions.length === 0) {
+                // Fallback: treat entire document as one table
+                return [extractSingleTable(rows, 'Extracted Table')];
+            }
+            
+            const tables = [];
+            tableRegions.forEach((region, idx) => {
+                const tableRows = rows.slice(region.startRow, region.endRow + 1);
+                const table = extractSingleTable(tableRows, region.title || `Table ${idx + 1}`);
+                if (table && table.rows.length > 0) {
+                    tables.push(table);
+                }
+            });
+            
+            console.log('=== EXTRACTION COMPLETE ===');
+            console.log('Tables extracted:', tables.length);
+            
+            return tables;
+        }
+        
+        function buildRows(items) {
+            const yTolerance = 6;
+            const rows = [];
+            
+            if (items.length === 0) return rows;
+            
+            let currentRow = { y: items[0].y, items: [items[0]] };
             
             for (let i = 1; i < items.length; i++) {
                 const item = items[i];
-                if (Math.abs(item.y - currentY) <= yTolerance) {
-                    currentRow.push(item);
+                if (Math.abs(item.y - currentRow.y) <= yTolerance) {
+                    currentRow.items.push(item);
                 } else {
-                    if (currentRow.length > 1) {
-                        currentRow.sort((a, b) => a.x - b.x);
-                        rows.push(currentRow);
-                    }
-                    currentRow = [item];
-                    currentY = item.y;
+                    currentRow.items.sort((a, b) => a.x - b.x);
+                    currentRow.text = currentRow.items.map(t => t.text).join(' ');
+                    rows.push(currentRow);
+                    currentRow = { y: item.y, items: [item] };
                 }
             }
-            if (currentRow.length > 1) {
-                currentRow.sort((a, b) => a.x - b.x);
-                rows.push(currentRow);
+            
+            currentRow.items.sort((a, b) => a.x - b.x);
+            currentRow.text = currentRow.items.map(t => t.text).join(' ');
+            rows.push(currentRow);
+            
+            return rows;
+        }
+        
+        function detectTableRegions(rows) {
+            const regions = [];
+            
+            // Header keywords that indicate actual table columns (not metadata)
+            const headerKeywords = [
+                'item', 'description', 'product', 'service', 'name',
+                'quantity', 'qty', 'amount', 'price', 'rate', 'cost',
+                'total', 'subtotal', 'discount', 'tax'
+            ];
+            
+            // Keywords that indicate NON-table content (skip these rows)
+            const skipKeywords = [
+                'invoice #', 'bill to', 'ship to', 'customer', 'vendor',
+                'order id', 'date', 'due date', 'payment terms', 'balance due'
+            ];
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const text = (row.text || '').toLowerCase();
+                
+                // Skip metadata rows
+                let shouldSkip = false;
+                for (const skipWord of skipKeywords) {
+                    if (text.includes(skipWord)) {
+                        shouldSkip = true;
+                        break;
+                    }
+                }
+                if (shouldSkip) continue;
+                
+                // Check if this looks like a TABLE header (not document header)
+                const hasMultipleColumns = row.items.length >= 3;
+                let headerScore = 0;
+                
+                headerKeywords.forEach(keyword => {
+                    if (text.includes(keyword)) headerScore++;
+                });
+                
+                // Require higher confidence: 2+ keywords AND 3+ columns
+                if (hasMultipleColumns && headerScore >= 2) {
+                    console.log(`Found table header at row ${i}: "${text}"`);
+                    
+                    // Find where the table data ends
+                    let endRow = i + 1;
+                    
+                    for (let j = i + 1; j < rows.length; j++) {
+                        const nextRow = rows[j];
+                        const nextText = (nextRow.text || '').toLowerCase();
+                        
+                        // Stop at summary/footer rows
+                        const isSummary = /(^|\s)(subtotal|total|tax|shipping|notes|terms|thanks|balance|amount due)(\s|:|$)/i.test(nextText);
+                        
+                        // Stop if column count drops significantly
+                        const columnDrop = nextRow.items.length < Math.max(2, row.items.length - 3);
+                        
+                        if (isSummary || columnDrop) {
+                            console.log(`Table ends at row ${j - 1} (reason: ${isSummary ? 'summary' : 'column drop'})`);
+                            endRow = j - 1;
+                            break;
+                        }
+                        
+                        endRow = j;
+                    }
+                    
+                    // Must have at least 1 data row
+                    if (endRow > i) {
+                        regions.push({
+                            startRow: i,
+                            endRow: endRow,
+                            title: extractTableTitle(rows, i)
+                        });
+                        
+                        console.log(`Table region: rows ${i} to ${endRow} (${endRow - i} data rows)`);
+                        
+                        // Skip to end of this table
+                        i = endRow;
+                    }
+                }
             }
             
-            if (rows.length < 2) return [];
+            return regions;
+        }
+        
+        function extractTableTitle(rows, headerIndex) {
+            // Look at the 3 rows before the header for a title
+            for (let i = Math.max(0, headerIndex - 3); i < headerIndex; i++) {
+                const text = (rows[i].text || '').trim();
+                if (text.length > 0 && text.length < 100 && rows[i].items.length <= 2) {
+                    // Likely a title if it's short and has few items
+                    return text;
+                }
+            }
+            return null;
+        }
+        
+        function extractSingleTable(rows, title) {
+            if (rows.length < 2) return null;
             
-            // Determine column positions from the first few rows
+            console.log(`Extracting table: "${title}" with ${rows.length} rows`);
+            
+            // Analyze column positions from all rows
+            const columnPositions = detectColumnPositions(rows);
+            
+            if (columnPositions.length < 2) return null; // Need at least 2 columns
+            
+            // Extract headers from first row
+            const headerRow = rows[0];
+            const headers = mapRowToColumns(headerRow, columnPositions);
+            
+            // Count expected columns (non-empty headers)
+            const expectedColumns = headers.filter(h => h.trim().length > 0).length;
+            
+            // Extract data rows with AGGRESSIVE filtering
+            const dataRows = [];
+            const seenRows = new Set();
+            
+            // Keywords that indicate NON-table rows (metadata, headers, footers)
+            const excludeKeywords = [
+                'invoice', 'bill to', 'ship to', 'date', 'balance due', 'ship mode',
+                'subtotal', 'total', 'shipping', 'tax', 'notes', 'terms', 'thanks',
+                'order id', 'customer', 'vendor', 'payment', 'due date', 'account',
+                'address', 'phone', 'email', 'website', 'page', 'continue'
+            ];
+            
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const rowText = (row.text || '').toLowerCase();
+                const cells = mapRowToColumns(row, columnPositions);
+                
+                // FILTER 1: Skip rows with metadata keywords
+                let hasExcludeKeyword = false;
+                for (const keyword of excludeKeywords) {
+                    if (rowText.includes(keyword)) {
+                        hasExcludeKeyword = true;
+                        break;
+                    }
+                }
+                if (hasExcludeKeyword) continue;
+                
+                // FILTER 2: Row must have data in at least 50% of columns
+                const filledCells = cells.filter(c => c.trim().length > 0).length;
+                const fillRatio = filledCells / expectedColumns;
+                if (fillRatio < 0.5) continue;
+                
+                // FILTER 3: At least one cell should have meaningful content (3+ chars)
+                const hasMeaningfulContent = cells.some(c => c.trim().length >= 3);
+                if (!hasMeaningfulContent) continue;
+                
+                // FILTER 4: Deduplicate
+                const rowKey = cells.join('|').trim().toLowerCase();
+                if (seenRows.has(rowKey)) continue;
+                if (rowKey.length < 3) continue;
+                
+                // FILTER 5: Skip rows that are just labels with colons (e.g., "Notes :")
+                if (rowText.match(/^[a-z\s]+:\s*$/i)) continue;
+                
+                // FILTER 6: Skip rows that are mostly empty or just punctuation
+                const textContent = rowKey.replace(/[^a-z0-9]/gi, '');
+                if (textContent.length < 3) continue;
+                
+                // Passed all filters - add to table
+                dataRows.push(cells);
+                seenRows.add(rowKey);
+            }
+            
+            console.log(`Table extracted: ${dataRows.length} unique data rows (from ${rows.length - 1} source rows)`);
+            
+            // Only return table if we found actual data rows
+            if (dataRows.length === 0) return null;
+            
+            return {
+                title: title,
+                headers: headers,
+                rows: dataRows
+            };
+        }
+        
+        function detectColumnPositions(rows) {
+            // Collect all X positions from all rows
             const allX = [];
-            rows.slice(0, 5).forEach(row => {
-                row.forEach(item => allX.push(item.x));
+            rows.forEach(row => {
+                row.items.forEach(item => {
+                    allX.push(item.x);
+                });
             });
+            
+            if (allX.length === 0) return [];
+            
+            // Sort and cluster X positions
             allX.sort((a, b) => a - b);
             
-            // Cluster X positions into columns
-            const columnThreshold = 30;
+            const columnThreshold = 30; // Minimum distance between columns
             const columns = [];
             let lastX = -1000;
+            
             allX.forEach(x => {
                 if (x - lastX > columnThreshold) {
                     columns.push(x);
@@ -935,85 +1163,139 @@
                 }
             });
             
-            // Build table data
-            const tableRows = rows.map(row => {
-                const cells = new Array(columns.length).fill('');
-                row.forEach(item => {
-                    // Find closest column
-                    let minDist = Infinity;
-                    let colIndex = 0;
-                    columns.forEach((colX, idx) => {
-                        const dist = Math.abs(item.x - colX);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            colIndex = idx;
-                        }
-                    });
-                    cells[colIndex] = cells[colIndex] ? cells[colIndex] + ' ' + item.text : item.text;
-                });
-                return cells;
-            });
-            
-            // Filter out rows with too few cells
-            const validRows = tableRows.filter(row => row.filter(c => c.trim()).length >= 2);
-            
-            if (validRows.length < 2) return [];
-            
-            // First row is headers
-            const headers = validRows[0].map((h, i) => h.trim() || `Column ${i + 1}`);
-            const dataRows = validRows.slice(1);
-            
-            return [{
-                title: 'Extracted Table',
-                headers: headers,
-                rows: dataRows
-            }];
+            return columns;
         }
         
-        // AI-powered Extraction
-        async function extractWithAI(text) {
-            const prompt = `Extract ALL tables from this text. Return ONLY a valid JSON object with this structure:
-{
-    "tables": [
-        {
-            "title": "Table name or null",
-            "headers": ["Column1", "Column2"],
-            "rows": [
-                ["value1", "value2"],
-                ["value3", "value4"]
-            ]
-        }
-    ]
-}
-
-If no clear tables are found, look for any tabular data patterns.
-Text content:
-${text.substring(0, 6000)}`;
-
-            const response = await fetch(GROQ_API_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: MODEL,
-                    messages: [{ role: 'user', content: prompt }],
-                    max_tokens: 4096,
-                    temperature: 0.1
-                })
+        function mapRowToColumns(row, columnPositions) {
+            const cells = new Array(columnPositions.length).fill('');
+            
+            row.items.forEach(item => {
+                // Find closest column
+                let minDist = Infinity;
+                let colIndex = 0;
+                
+                columnPositions.forEach((colX, idx) => {
+                    const dist = Math.abs(item.x - colX);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        colIndex = idx;
+                    }
+                });
+                
+                // Add text to the closest column
+                if (cells[colIndex]) {
+                    cells[colIndex] += ' ' + item.text;
+                } else {
+                    cells[colIndex] = item.text;
+                }
             });
             
-            if (!response.ok) throw new Error('AI extraction failed');
+            return cells.map(c => c.trim());
+        }
+        
+        // ============================================
+        // AI-POWERED TABLE EXTRACTION (Llama 4 Maverick)
+        // ============================================
+        async function extractWithAI(text) {
+            const systemPrompt = `You are an expert table extraction AI using Llama 4 Maverick.
+Extract ALL tables from documents with maximum accuracy.
+
+Rules:
+- Detect table headers and data rows
+- Preserve column alignment
+- Handle merged cells
+- Extract numeric data correctly
+- Maintain row order
+
+Return ONLY a valid JSON object with no markdown.`;
+
+            const userPrompt = `Extract ALL tables from this document and return ONLY a JSON object:
+
+{
+  "tables": [
+    {
+      "title": "Table name or null",
+      "headers": ["Column1", "Column2", "Column3"],
+      "rows": [
+        ["value1", "value2", "value3"],
+        ["value4", "value5", "value6"]
+      ]
+    }
+  ]
+}
+
+DOCUMENT TEXT:
+${text.substring(0, 12000)}
+
+CRITICAL INSTRUCTIONS:
+1. Return ONLY the JSON object - no markdown, no explanation
+2. Extract ALL tables found in the document
+3. Preserve column order and alignment
+4. Use null for missing values
+5. Include table titles if visible
+6. Do NOT wrap response in markdown code blocks`;
+
+            try {
+                const response = await fetch(GROQ_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${GROQ_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: MODEL,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userPrompt }
+                        ],
+                        max_tokens: 8192,
+                        temperature: 0.1
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`AI extraction failed: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const content = result.choices?.[0]?.message?.content || '';
+                
+                return parseTableJSON(content);
+            } catch (error) {
+                console.error('AI extraction error:', error);
+                throw new Error(`AI extraction failed: ${error.message}`);
+            }
+        }
+        
+        function parseTableJSON(content) {
+            // Remove markdown code blocks
+            let jsonStr = content.trim();
             
-            const result = await response.json();
-            const content = result.choices[0]?.message?.content;
+            if (jsonStr.includes('```')) {
+                const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+                if (match) jsonStr = match[1].trim();
+            }
             
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error('Could not parse AI response');
+            // Extract JSON object
+            if (!jsonStr.startsWith('{')) {
+                const match = jsonStr.match(/\{[\s\S]*\}/);
+                if (match) jsonStr = match[0];
+            }
             
-            const parsed = JSON.parse(jsonMatch[0]);
-            return parsed.tables || [];
+            try {
+                const parsed = JSON.parse(jsonStr);
+                return parsed.tables || [];
+            } catch (e) {
+                // Try to fix common JSON issues
+                jsonStr = jsonStr
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*]/g, ']')
+                    .replace(/'/g, '"')
+                    .replace(/:\s*undefined/g, ': null');
+                
+                const parsed = JSON.parse(jsonStr);
+                return parsed.tables || [];
+            }
         }
         
         async function incrementUsage(userId) {
@@ -1114,6 +1396,7 @@ ${text.substring(0, 6000)}`;
             clearFile();
             extractedTables = [];
             currentTableIndex = 0;
+            pdfTextItems = [];
             document.getElementById('results-section').classList.add('hidden');
             document.getElementById('error-section').classList.add('hidden');
             document.getElementById('upload-section').classList.remove('hidden');
